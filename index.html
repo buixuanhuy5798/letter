@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lá thư bị xé</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&family=Be+Vietnam+Pro:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg1: #2b1a24;
+    --bg2: #4a2433;
+    --ink: #fbeff2;
+    --muted: #d9b8c3;
+    --accent: #ff5d7d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(ellipse at top, var(--bg2), var(--bg1) 70%);
+    color: var(--ink);
+    font-family: "Be Vietnam Pro", system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 14px 16px 6px; max-width: 1040px; margin: 0 auto;
+  }
+  h1 { font-family: "Dancing Script", cursive; font-size: 30px; margin: 0; font-weight: 700; }
+  .school {
+    display: inline-block; margin-top: 4px; font-size: 13px; font-weight: 600;
+    letter-spacing: .02em; color: #ffd1dc;
+    background: rgba(255,93,125,.16); border: 1px solid rgba(255,93,125,.35);
+    padding: 3px 10px; border-radius: 999px;
+  }
+  .hud { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); }
+  button {
+    font: inherit; font-size: 14px; color: var(--ink);
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+    padding: 7px 14px; border-radius: 999px; cursor: pointer;
+  }
+  button:hover { background: rgba(255,255,255,.16); }
+  .hint { text-align: center; font-size: 13px; color: var(--muted); margin: 0 16px 6px; }
+  #wrap { margin: 0 auto; position: relative; }
+  #board {
+    position: absolute; left: 0; top: 0; width: 1000px; height: 680px;
+    transform-origin: 0 0; touch-action: none;
+  }
+  #frame {
+    position: absolute; border: 2px dashed rgba(255,255,255,.22); border-radius: 4px;
+    background: rgba(255,255,255,.03);
+    transition: border-color .6s, box-shadow 1s;
+  }
+  #full {
+    position: absolute; opacity: 0; pointer-events: none;
+    transition: opacity 1s ease .3s;
+    border-radius: 2px;
+  }
+  .piece {
+    position: absolute; left: 0; top: 0; pointer-events: none;
+    transform-origin: center center;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,.45));
+    will-change: transform;
+  }
+  .piece.drag { filter: drop-shadow(0 14px 16px rgba(0,0,0,.55)); }
+  .piece.placed { filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+  .won #frame { border-color: transparent; box-shadow: 0 0 60px 10px rgba(255,93,125,.55); }
+  .won #full { opacity: 1; animation: beat 1.4s ease-in-out 1.3s infinite; }
+  .won .piece { opacity: 0; transition: opacity 1s ease .3s; }
+  @keyframes beat { 0%,100% { transform: scale(1); } 15% { transform: scale(1.03); } 30% { transform: scale(1); } 45% { transform: scale(1.02); } }
+
+  #fx { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 140%);
+    background: linear-gradient(135deg, #ff5d7d, #c2185b); color: #fff;
+    padding: 14px 22px; border-radius: 16px; z-index: 6; text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    transition: transform .7s cubic-bezier(.2,1.4,.4,1);
+    max-width: calc(100% - 32px);
+  }
+  #toast b { font-family: "Dancing Script", cursive; font-size: 30px; display: block; }
+  #toast.show { transform: translate(-50%, 0); }
+  #time { margin: 8px 0 6px; font-size: 18px; font-weight: 600; }
+  #time span { display: block; font-size: 13px; font-weight: 400; opacity: .9; }
+  #timer { font-variant-numeric: tabular-nums; color: var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>💌 Lá thư bị xé</h1>
+    <div class="school">Lớp 4A3 · Trường Tiểu học Vạn Bào</div>
+  </div>
+  <div class="hud">
+    <span id="timer">⏱ 00:00</span>
+    <span id="count">0 / 0</span>
+    <button id="reset">Xé lại</button>
+  </div>
+</header>
+<p class="hint">Kéo từng mảnh vào khung nét đứt. Mảnh nào đặt gần đúng chỗ sẽ tự khớp vào.</p>
+<div id="wrap"><div id="board"><div id="frame"></div><canvas id="full"></canvas></div></div>
+<canvas id="fx"></canvas>
+<div id="toast"><b>Hoàn thành!</b>Bạn đã ghép lại lá thư ❤<div id="time"></div><small>Lớp 4A3 · Trường Tiểu học Vạn Bào</small></div>
+
+<script>
+const BW = 1000, BH = 680;          // board logical size
+const LW = 560, LH = 380;           // letter size
+const LX = (BW - LW) / 2, LY = (BH - LH) / 2;
+const COLS = 4, ROWS = 3;
+const SNAP = 32;
+
+const board = document.getElementById('board');
+const wrap = document.getElementById('wrap');
+const frame = document.getElementById('frame');
+const full = document.getElementById('full');
+const countEl = document.getElementById('count');
+const toast = document.getElementById('toast');
+const hitCtx = document.createElement('canvas').getContext('2d');
+
+Object.assign(frame.style, { left: LX + 'px', top: LY + 'px', width: LW + 'px', height: LH + 'px' });
+Object.assign(full.style, { left: LX + 'px', top: LY + 'px', width: LW + 'px', height: LH + 'px' });
+
+let scale = 1, pieces = [], drag = null, zTop = 10, won = false;
+
+/* ---------- timer ---------- */
+const timerEl = document.getElementById('timer');
+const timeEl = document.getElementById('time');
+let startTime = null, elapsed = 0, timerId = null;
+const fmt = ms => { const s = Math.floor(ms / 1000); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+function startTimer() {
+  if (startTime !== null) return;
+  startTime = Date.now();
+  timerId = setInterval(() => { timerEl.textContent = '⏱ ' + fmt(Date.now() - startTime); }, 250);
+}
+function stopTimer() {
+  clearInterval(timerId); timerId = null;
+  elapsed = startTime === null ? 0 : Date.now() - startTime;
+  timerEl.textContent = '⏱ ' + fmt(elapsed);
+}
+function resetTimer() {
+  clearInterval(timerId); timerId = null; startTime = null; elapsed = 0;
+  timerEl.textContent = '⏱ 00:00';
+}
+function bestTime(ms) {
+  let best = null;
+  try { best = Number(localStorage.getItem('letter-best')) || null; } catch (e) {}
+  const isNew = best === null || ms < best;
+  if (isNew) { try { localStorage.setItem('letter-best', String(ms)); } catch (e) {} best = ms; }
+  return { best, isNew };
+}
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+function fit() {
+  const avail = window.innerWidth - 16, availH = window.innerHeight - 135;
+  scale = Math.min(avail / BW, availH / BH, 1.2);
+  board.style.transform = `scale(${scale})`;
+  wrap.style.width = BW * scale + 'px';
+  wrap.style.height = BH * scale + 'px';
+}
+window.addEventListener('resize', fit);
+
+/* ---------- letter texture ---------- */
+function drawLetter() {
+  const c = document.createElement('canvas');
+  c.width = LW * DPR; c.height = LH * DPR;
+  const g = c.getContext('2d');
+  g.scale(DPR, DPR);
+  // paper
+  const grd = g.createRadialGradient(LW/2, LH/2, 40, LW/2, LH/2, LW*0.7);
+  grd.addColorStop(0, '#fbf3df'); grd.addColorStop(1, '#ead8b4');
+  g.fillStyle = grd; g.fillRect(0, 0, LW, LH);
+  // paper grain
+  for (let i = 0; i < 2500; i++) {
+    g.fillStyle = `rgba(120,90,50,${Math.random()*0.05})`;
+    g.fillRect(Math.random()*LW, Math.random()*LH, 1.5, 1.5);
+  }
+  // ruled lines + margin
+  g.strokeStyle = 'rgba(90,120,170,.18)'; g.lineWidth = 1;
+  for (let y = 70; y < LH - 20; y += 34) { g.beginPath(); g.moveTo(24, y); g.lineTo(LW - 24, y); g.stroke(); }
+  g.strokeStyle = 'rgba(200,70,80,.25)';
+  g.beginPath(); g.moveTo(58, 16); g.lineTo(58, LH - 16); g.stroke();
+
+  g.fillStyle = '#5a3a2c';
+  g.font = '600 30px "Dancing Script", cursive';
+  g.fillText('Dear you,', 74, 58);
+
+  g.save();
+  g.translate(LW/2, LH/2 + 18);
+  g.rotate(-0.05);
+  g.textAlign = 'center';
+  g.fillStyle = '#b3133a';
+  g.shadowColor = 'rgba(179,19,58,.25)'; g.shadowBlur = 4;
+  g.font = '700 104px "Dancing Script", cursive';
+  g.fillText('I love you', 0, 0);
+  g.restore();
+
+  heart(g, LW/2 + 186, LH/2 - 62, 22, '#e23d5f');
+  heart(g, LW/2 - 205, LH/2 + 52, 12, '#e86a84');
+
+  g.fillStyle = '#5a3a2c';
+  g.textAlign = 'right';
+  g.font = '600 28px "Dancing Script", cursive';
+  g.fillText('Forever yours ♥', LW - 40, LH - 32);
+  return c;
+}
+function heart(g, x, y, s, color) {
+  g.save(); g.translate(x, y); g.fillStyle = color;
+  g.beginPath();
+  g.moveTo(0, s*0.35);
+  g.bezierCurveTo(-s*1.1, -s*0.45, -s*0.45, -s*1.15, 0, -s*0.45);
+  g.bezierCurveTo(s*0.45, -s*1.15, s*1.1, -s*0.45, 0, s*0.35);
+  g.fill(); g.restore();
+}
+
+/* ---------- torn geometry ---------- */
+function jag(a, b, depth, rough) {
+  if (depth === 0) return [a];
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy);
+  const off = (Math.random() - 0.5) * len * rough;
+  const m = [mx - dy / len * off, my + dx / len * off];
+  return [...jag(a, m, depth - 1, rough), ...jag(m, b, depth - 1, rough)];
+}
+function buildPieces(tex) {
+  // grid points, interior jittered
+  const P = [];
+  for (let r = 0; r <= ROWS; r++) {
+    P[r] = [];
+    for (let c = 0; c <= COLS; c++) {
+      let x = c * LW / COLS, y = r * LH / ROWS;
+      if (c > 0 && c < COLS) x += (Math.random() - 0.5) * LW / COLS * 0.35;
+      if (r > 0 && r < ROWS) y += (Math.random() - 0.5) * LH / ROWS * 0.35;
+      P[r][c] = [x, y];
+    }
+  }
+  const H = {}, V = {}; // edges: H[r,c] P[r][c]->P[r][c+1], V[r,c] P[r][c]->P[r+1][c]
+  const edge = (a, b, outer) => outer ? [a] : jag(a, b, 4, 0.32);
+  for (let r = 0; r <= ROWS; r++) for (let c = 0; c < COLS; c++)
+    H[r+','+c] = edge(P[r][c], P[r][c+1], r === 0 || r === ROWS);
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c <= COLS; c++)
+    V[r+','+c] = edge(P[r][c], P[r+1][c], c === 0 || c === COLS);
+  const rev = (pts, end) => [end, ...pts.slice(1).reverse()];
+
+  const list = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const poly = [
+      ...H[r+','+c],
+      ...V[r+','+(c+1)],
+      ...rev(H[(r+1)+','+c], P[r+1][c+1]),
+      ...rev(V[r+','+c], P[r+1][c]),
+    ];
+    list.push(makePiece(poly, tex));
+  }
+  return list;
+}
+function makePiece(poly, tex) {
+  const pad = 4;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of poly) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+  const ox = minX - pad, oy = minY - pad;
+  const w = Math.ceil(maxX - minX + pad * 2), h = Math.ceil(maxY - minY + pad * 2);
+  const path = new Path2D();
+  poly.forEach(([x, y], i) => i ? path.lineTo(x - ox, y - oy) : path.moveTo(x - ox, y - oy));
+  path.closePath();
+
+  const cv = document.createElement('canvas');
+  cv.width = w * DPR; cv.height = h * DPR;
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.className = 'piece';
+  const g = cv.getContext('2d');
+  g.scale(DPR, DPR);
+  g.save(); g.clip(path);
+  g.drawImage(tex, ox * DPR, oy * DPR, w * DPR, h * DPR, 0, 0, w, h);
+  // white torn fibres along the cut
+  g.strokeStyle = 'rgba(255,255,250,.85)'; g.lineWidth = 3.2; g.stroke(path);
+  g.strokeStyle = 'rgba(150,120,80,.25)'; g.lineWidth = 1; g.stroke(path);
+  g.restore();
+  board.appendChild(cv);
+  return { el: cv, path, w, h, tx: LX + ox, ty: LY + oy, x: 0, y: 0, rot: 0, placed: false };
+}
+
+/* ---------- state & render ---------- */
+function place(p, animate) {
+  p.el.style.transition = animate ? 'transform .25s cubic-bezier(.3,1.4,.5,1)' : 'none';
+  const s = p.el.classList.contains('drag') ? 1.05 : 1;
+  p.el.style.transform = `translate(${p.x}px,${p.y}px) rotate(${p.rot}rad) scale(${s})`;
+}
+function scatter() {
+  const spots = [];
+  // spots around the frame (left, right, top strip, bottom strip)
+  for (const p of pieces) {
+    let x, y, tries = 0;
+    do {
+      x = Math.random() * (BW - p.w); y = Math.random() * (BH - p.h);
+      const cx = x + p.w / 2, cy = y + p.h / 2;
+      const inFrame = cx > LX + 30 && cx < LX + LW - 30 && cy > LY + 30 && cy < LY + LH - 30;
+      const crowded = spots.some(s => Math.hypot(s[0] - cx, s[1] - cy) < 90);
+      if (!inFrame && (!crowded || tries > 60)) break;
+    } while (++tries < 200);
+    spots.push([x + p.w / 2, y + p.h / 2]);
+    p.x = x; p.y = y; p.rot = (Math.random() - 0.5) * 0.9;
+    p.placed = false;
+    p.el.classList.remove('placed');
+    p.el.style.zIndex = ++zTop;
+    place(p, false);
+  }
+}
+function updateCount() {
+  const n = pieces.filter(p => p.placed).length;
+  countEl.textContent = `Đã ghép ${n} / ${pieces.length}`;
+  if (n === pieces.length && !won) win();
+}
+
+function newGame() {
+  won = false;
+  resetTimer();
+  board.classList.remove('won');
+  toast.classList.remove('show');
+  pieces.forEach(p => p.el.remove());
+  const tex = drawLetter();
+  full.width = tex.width; full.height = tex.height;
+  full.getContext('2d').drawImage(tex, 0, 0);
+  pieces = buildPieces(tex);
+  scatter();
+  updateCount();
+}
+
+/* ---------- input ---------- */
+function toLocal(e) {
+  const r = board.getBoundingClientRect();
+  return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale];
+}
+function hit(p, lx, ly) {
+  const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+  const dx = lx - cx, dy = ly - cy, c = Math.cos(-p.rot), s = Math.sin(-p.rot);
+  return hitCtx.isPointInPath(p.path, dx * c - dy * s + p.w / 2, dx * s + dy * c + p.h / 2);
+}
+board.addEventListener('pointerdown', e => {
+  if (won) return;
+  const [lx, ly] = toLocal(e);
+  const order = pieces.filter(p => !p.placed).sort((a, b) => b.el.style.zIndex - a.el.style.zIndex);
+  const p = order.find(p => hit(p, lx, ly));
+  if (!p) return;
+  startTimer();
+  board.setPointerCapture(e.pointerId);
+  drag = { p, dx: lx - p.x, dy: ly - p.y, id: e.pointerId };
+  p.el.style.zIndex = ++zTop;
+  p.el.classList.add('drag');
+  place(p, true);
+});
+board.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const [lx, ly] = toLocal(e);
+  const p = drag.p;
+  p.x = Math.max(-p.w / 2, Math.min(BW - p.w / 2, lx - drag.dx));
+  p.y = Math.max(-p.h / 2, Math.min(BH - p.h / 2, ly - drag.dy));
+  p.rot *= 0.97; // straightens a little while you carry it
+  place(p, false);
+});
+function release(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const p = drag.p; drag = null;
+  p.el.classList.remove('drag');
+  if (Math.hypot(p.x - p.tx, p.y - p.ty) < SNAP) {
+    p.x = p.tx; p.y = p.ty; p.rot = 0; p.placed = true;
+    p.el.classList.add('placed');
+    p.el.style.zIndex = 2;
+    place(p, true);
+    updateCount();
+  } else place(p, true);
+}
+board.addEventListener('pointerup', release);
+board.addEventListener('pointercancel', release);
+document.getElementById('reset').addEventListener('click', newGame);
+
+/* ---------- win effect ---------- */
+const fx = document.getElementById('fx'), fg = fx.getContext('2d');
+let parts = [], fxRunning = false;
+function sizeFx() { fx.width = innerWidth * DPR; fx.height = innerHeight * DPR; }
+window.addEventListener('resize', sizeFx);
+
+function win() {
+  won = true;
+  stopTimer();
+  const { best, isNew } = bestTime(elapsed);
+  timeEl.innerHTML = `⏱ Thời gian hoàn thành: ${fmt(elapsed)}` +
+    `<span>${isNew ? '🏆 Kỷ lục mới!' : 'Kỷ lục: ' + fmt(best)}</span>`;
+  // fireworks: a volley of rockets over ~6 seconds
+  let shots = 0;
+  const volley = setInterval(() => {
+    if (!won || ++shots > 18) return clearInterval(volley);
+    const k = shots % 3 === 0 ? 2 : 1;
+    for (let i = 0; i < k; i++) launchRocket();
+    if (!fxRunning) { fxRunning = true; requestAnimationFrame(tick); }
+  }, 340);
+  setTimeout(() => board.classList.add('won'), 250);
+  setTimeout(() => toast.classList.add('show'), 900);
+  const r = frame.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const colors = ['#ff5d7d', '#ff8fa8', '#ffd1dc', '#e0245e', '#ffffff', '#ffc857'];
+  setTimeout(() => {
+    for (let i = 0; i < 140; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * 9;
+      parts.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 4,
+        size: 6 + Math.random() * 14, color: colors[i % colors.length],
+        heart: Math.random() < 0.55, rot: Math.random() * 6, vr: (Math.random() - .5) * .3, life: 1, g: 0.18 });
+    }
+    let n = 0;
+    const rain = setInterval(() => {
+      for (let i = 0; i < 3; i++) parts.push({ x: Math.random() * innerWidth, y: innerHeight + 20,
+        vx: (Math.random() - .5) * 1, vy: -1.5 - Math.random() * 2.5, size: 10 + Math.random() * 18,
+        color: colors[(Math.random() * 4) | 0], heart: true, rot: 0, vr: 0, life: 1, g: -0.005, float: true });
+      if (++n > 90 || !won) clearInterval(rain);
+    }, 70);
+    if (!fxRunning) { fxRunning = true; requestAnimationFrame(tick); }
+  }, 300);
+}
+function drawHeart(x, y, s) {
+  fg.beginPath();
+  fg.moveTo(x, y + s * 0.35);
+  fg.bezierCurveTo(x - s * 1.1, y - s * 0.45, x - s * 0.45, y - s * 1.15, x, y - s * 0.45);
+  fg.bezierCurveTo(x + s * 0.45, y - s * 1.15, x + s * 1.1, y - s * 0.45, x, y + s * 0.35);
+  fg.fill();
+}
+function launchRocket() {
+  const W = innerWidth, H = innerHeight;
+  const targetY = H * (0.12 + Math.random() * 0.3);
+  parts.push({ rocket: true, x: W * (0.12 + Math.random() * 0.76), y: H + 10,
+    vx: (Math.random() - 0.5) * 2, vy: -Math.sqrt(2 * 0.16 * (H - targetY)),
+    hue: Math.random() * 360, life: 1 });
+}
+function explode(r, out) {
+  const n = 90 + (Math.random() * 50 | 0), power = 5 + Math.random() * 3.5;
+  const ring = Math.random() < 0.3;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.1;
+    const sp = ring ? power : power * (0.3 + Math.random() * 0.7);
+    const hue = (r.hue + (Math.random() - 0.5) * 50 + 360) % 360;
+    out.push({ spark: true, x: r.x, y: r.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      color: `hsl(${hue},100%,${60 + Math.random() * 20}%)`, life: 1,
+      decay: 0.006 + Math.random() * 0.007, twinkle: Math.random() < 0.4 });
+  }
+  out.push({ flash: true, x: r.x, y: r.y, hue: r.hue, life: 1 });
+}
+function tick() {
+  fg.setTransform(DPR, 0, 0, DPR, 0, 0);
+  fg.clearRect(0, 0, innerWidth, innerHeight);
+  parts = parts.filter(p => p.life > 0 && p.y < innerHeight + 60 && p.y > -80);
+  const born = [];
+  for (const p of parts) {
+    if (p.rocket) {
+      p.vy += 0.16; p.x += p.vx; p.y += p.vy;
+      if (p.vy > -0.6) { p.life = 0; explode(p, born); continue; }
+      fg.save();
+      fg.strokeStyle = `hsla(${p.hue},100%,80%,.9)`; fg.lineWidth = 2.5; fg.lineCap = 'round';
+      fg.beginPath(); fg.moveTo(p.x, p.y); fg.lineTo(p.x - p.vx * 3, p.y - p.vy * 3); fg.stroke();
+      fg.restore();
+      continue;
+    }
+    if (p.flash) {
+      p.life -= 0.08;
+      fg.save(); fg.globalAlpha = Math.max(0, p.life) * 0.6;
+      const gr = fg.createRadialGradient(p.x, p.y, 0, p.x, p.y, 70);
+      gr.addColorStop(0, `hsla(${p.hue},100%,90%,1)`); gr.addColorStop(1, `hsla(${p.hue},100%,60%,0)`);
+      fg.fillStyle = gr; fg.beginPath(); fg.arc(p.x, p.y, 70, 0, Math.PI * 2); fg.fill();
+      fg.restore();
+      continue;
+    }
+    if (p.spark) {
+      p.vx *= 0.955; p.vy = p.vy * 0.955 + 0.03; p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+      let a = Math.min(1, Math.max(0, p.life) * 1.4);
+      if (p.twinkle && p.life < 0.6 && Math.random() < 0.35) a *= 0.15;
+      fg.save(); fg.globalCompositeOperation = 'lighter'; fg.globalAlpha = a;
+      fg.strokeStyle = p.color; fg.lineCap = 'round';
+      fg.beginPath(); fg.moveTo(p.x, p.y); fg.lineTo(p.x - p.vx * 4, p.y - p.vy * 4);
+      fg.lineWidth = 6; fg.globalAlpha = a * 0.25; fg.stroke();   // soft glow
+      fg.lineWidth = 2.2; fg.globalAlpha = a; fg.stroke();
+      fg.restore();
+      continue;
+    }
+    p.vy += p.g; p.vx *= 0.99; p.x += p.vx + (p.float ? Math.sin(p.y / 30) * 0.6 : 0); p.y += p.vy;
+    p.rot += p.vr; p.life -= p.float ? 0.004 : 0.008;
+    fg.save(); fg.globalAlpha = Math.max(0, Math.min(1, p.life * 1.5));
+    fg.fillStyle = p.color; fg.translate(p.x, p.y); fg.rotate(p.rot);
+    if (p.heart) drawHeart(0, 0, p.size / 2); else fg.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+    fg.restore();
+  }
+  if (born.length) parts.push(...born);
+  if (parts.length) requestAnimationFrame(tick); else { fxRunning = false; fg.clearRect(0, 0, innerWidth, innerHeight); }
+}
+
+/* ---------- start ---------- */
+fit(); sizeFx();
+(document.fonts ? document.fonts.load('700 104px "Dancing Script"').catch(() => {}).then(() => document.fonts.ready) : Promise.resolve())
+  .then(newGame);
+</script>
+</body>
+</html>
